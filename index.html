@@ -1,0 +1,781 @@
+import React, { useState, useMemo, useEffect } from 'react';
+import { Tabs, Calendar, CalendarDays, History, TrendingUp, Compass, Search, AlertCircle, CheckCircle2, ChevronRight, Star, Activity, ArrowRight, ShieldAlert, Zap, Sparkles, Info } from 'lucide-react';
+
+const STEMS = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸'];
+const BRANCHES = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥'];
+
+const STEM_ATTR = {
+  '甲': { el: '木', yy: '+', desc: '參天之木，剛健向上' }, '乙': { el: '木', yy: '-', desc: '花草之木，柔韌蔓延' },
+  '丙': { el: '火', yy: '+', desc: '太陽之火，猛烈光輝' }, '丁': { el: '火', yy: '-', desc: '星月燈燭，溫和昭融' },
+  '戊': { el: '土', yy: '+', desc: '城牆岩土，厚重包容' }, '己': { el: '土', yy: '-', desc: '田園濕土，滋生萬物' },
+  '庚': { el: '金', yy: '+', desc: '刀劍戈戟，剛銳肅殺' }, '辛': { el: '金', yy: '-', desc: '珠寶首飾，溫潤清秀' },
+  '壬': { el: '水', yy: '+', desc: '江河湖海，奔騰流動' }, '癸': { el: '水', yy: '-', desc: '雨露之水，滋潤靜謐' }
+};
+
+const BRANCH_ATTR = {
+  '寅': { el: '木', yy: '+', desc: '初春之木' }, '卯': { el: '木', yy: '-', desc: '仲春之木' },
+  '巳': { el: '火', yy: '-', desc: '初夏之火' }, '午': { el: '火', yy: '+', desc: '仲夏之火' },
+  '辰': { el: '土', yy: '+', desc: '春季濕土/水庫' }, '戌': { el: '土', yy: '+', desc: '秋季燥土/火庫' }, 
+  '丑': { el: '土', yy: '-', desc: '冬季濕土/金庫' }, '未': { el: '土', yy: '-', desc: '夏季燥土/木庫' },
+  '申': { el: '金', yy: '+', desc: '初秋之金' }, '酉': { el: '金', yy: '-', desc: '仲秋之金' },
+  '亥': { el: '水', yy: '-', desc: '初冬之水' }, '子': { el: '水', yy: '+', desc: '仲冬之水' }
+};
+
+const WU_XING_RELATION = {
+  '木': { sheng: '火', ke: '土', beiSheng: '水', beiKe: '金' },
+  '火': { sheng: '土', ke: '金', beiSheng: '木', beiKe: '水' },
+  '土': { sheng: '金', ke: '水', beiSheng: '火', beiKe: '木' },
+  '金': { sheng: '水', ke: '木', beiSheng: '土', beiKe: '火' },
+  '水': { sheng: '木', ke: '火', beiSheng: '金', beiKe: '土' }
+};
+
+const RELATIONS = {
+  chong: [['子','午'], ['丑','未'], ['寅','申'], ['卯','酉'], ['辰','戌'], ['巳','亥']],
+  he: [['子','丑'], ['寅','亥'], ['卯','戌'], ['辰','酉'], ['巳','申'], ['午','未']],
+  sanhe: [['申','子','辰'], ['亥','卯','未'], ['寅','午','戌'], ['巳','酉','丑']],
+  xing: [['寅','巳','申'], ['丑','戌','未'], ['子','卯'], ['辰','辰'], ['午','午'], ['酉','酉'], ['亥','亥']],
+  hai: [['子','未'], ['丑','午'], ['寅','巳'], ['卯','辰'], ['申','亥'], ['酉','戌']],
+  anhe: [['寅','丑'], ['午','亥'], ['卯','申']],
+  angong: [['申','辰','子'], ['亥','未','卯'], ['寅','戌','午'], ['巳','丑','酉']] // [0,1] 拱 [2]
+};
+
+// 天干關係
+const TG_RELATIONS = {
+  chong: [['甲','庚'], ['乙','辛'], ['壬','丙'], ['癸','丁']],
+  he: [['甲','己'], ['乙','庚'], ['丙','辛'], ['丁','壬'], ['戊','癸']]
+};
+
+const NAYIN_TABLE = {
+  '甲子': '海中金', '乙丑': '海中金', '丙寅': '爐中火', '丁卯': '爐中火', '戊辰': '大林木', '己巳': '大林木',
+  '庚午': '路旁土', '辛未': '路旁土', '壬申': '劍鋒金', '癸酉': '劍鋒金', '甲戌': '山頭火', '乙亥': '山頭火',
+  '丙子': '澗下水', '丁丑': '澗下水', '戊寅': '城頭土', '己卯': '城頭土', '庚辰': '白蠟金', '辛巳': '白蠟金',
+  '壬午': '楊柳木', '癸未': '楊柳木', '甲申': '泉中水', '乙酉': '泉中水', '丙戌': '屋上土', '丁亥': '屋上土',
+  '戊子': '霹靂火', '己丑': '霹靂火', '庚寅': '松柏木', '辛卯': '松柏木', '壬辰': '長流水', '癸巳': '長流水',
+  '甲午': '沙中金', '乙未': '沙中金', '丙申': '山下火', '丁酉': '山下火', '戊戌': '平地木', '己亥': '平地木',
+  '庚子': '壁上土', '辛丑': '壁上土', '壬寅': '金箔金', '癸卯': '金箔金', '甲辰': '覆燈火', '乙巳': '覆燈火',
+  '丙午': '天河水', '丁未': '天河水', '戊申': '大驛土', '己酉': '大驛土', '庚戌': '釵釧金', '辛亥': '釵釧金',
+  '壬子': '桑柘木', '癸丑': '桑柘木', '甲寅': '大溪水', '乙卯': '大溪水', '丙辰': '沙中土', '丁巳': '沙中土',
+  '戊午': '天上火', '己未': '天上火', '庚申': '石榴木', '辛酉': '石榴木', '壬戌': '大海水', '癸亥': '大海水'
+};
+
+const ZHANG_SHENG = {
+  '甲': ['沐浴','冠帶','臨官','帝旺','衰','病','死','墓','絕','胎','養','長生'], // 子-亥
+  '丙': ['胎','養','長生','沐浴','冠帶','臨官','帝旺','衰','病','死','墓','絕'],
+  '戊': ['胎','養','長生','沐浴','冠帶','臨官','帝旺','衰','病','死','墓','絕'],
+  '庚': ['死','墓','絕','胎','養','長生','沐浴','冠帶','臨官','帝旺','衰','病'],
+  '壬': ['帝旺','衰','病','死','墓','絕','胎','養','長生','沐浴','冠帶','臨官'],
+  '乙': ['病','衰','帝旺','臨官','冠帶','沐浴','長生','養','胎','絕','墓','死'],
+  '丁': ['絕','墓','死','病','衰','帝旺','臨官','冠帶','沐浴','長生','養','胎'],
+  '己': ['絕','墓','死','病','衰','帝旺','臨官','冠帶','沐浴','長生','養','胎'],
+  '辛': ['長生','養','胎','絕','墓','死','病','衰','帝旺','臨官','冠帶','沐浴'],
+  '癸': ['臨官','冠帶','沐浴','長生','養','胎','絕','墓','死','病','衰','帝旺']
+};
+
+const getKongWang = (stem, branch) => {
+  const sIdx = STEMS.indexOf(stem);
+  const bIdx = BRANCHES.indexOf(branch);
+  if (sIdx === -1 || bIdx === -1) return [];
+  let offset = bIdx - sIdx;
+  if (offset < 0) offset += 12;
+  return [BRANCHES[(10+offset)%12], BRANCHES[(11+offset)%12]];
+};
+
+const getExactTenGod = (dmStem, targetStemOrBranch) => {
+  const dm = STEM_ATTR[dmStem];
+  const target = STEM_ATTR[targetStemOrBranch] || BRANCH_ATTR[targetStemOrBranch];
+  if (!dm || !target) return '未知';
+  const isSameYY = dm.yy === target.yy;
+  if (dm.el === target.el) return isSameYY ? '比肩' : '劫財';
+  if (WU_XING_RELATION[dm.el].sheng === target.el) return isSameYY ? '食神' : '傷官';
+  if (WU_XING_RELATION[dm.el].ke === target.el) return isSameYY ? '偏財' : '正財';
+  if (WU_XING_RELATION[target.el].ke === dm.el) return isSameYY ? '七殺' : '正官';
+  if (WU_XING_RELATION[target.el].sheng === dm.el) return isSameYY ? '偏印' : '正印';
+  return '未知';
+};
+
+const EVENT_DICTIONARY = {
+  '比肩': { focus: '人際/分負', desc: '社交與同儕活動顯著增加。利於合作結盟，但也易與人競爭資源、產生預期外的花費。' },
+  '劫財': { focus: '破耗/競爭', desc: '極易有突發性支出、意外破財或投資失利。事業競爭壓力大，需防小人劫奪成果。' },
+  '食神': { focus: '享受/創意', desc: '生活步調放慢，口福佳。思維活躍，極利於學習、創作、展現才華，財源暗生。' },
+  '傷官': { focus: '變動/是非', desc: '內心極度渴望改變。才華洋溢但恃才傲物，言辭犀利容易得罪長輩或上司，防口舌官非。' },
+  '偏財': { focus: '偏財/桃花', desc: '易有投資收益、兼職意外之財。男性異性緣極佳，單身者易遇短暫桃花，交際應酬繁多。' },
+  '正財': { focus: '正財/穩定', desc: '正當工作收入穩定增長。適合購置資產。感情狀態穩定，極利於談婚論嫁與家庭建立。' },
+  '七殺': { focus: '壓力/開創', desc: '面臨巨大的責任、壓力與挑戰。易接手燙手山芋或遇嚴厲強勢的主管。需魄力克服。' },
+  '正官': { focus: '事業/名譽', desc: '事業運平穩向上，易得長官賞識、升職加薪。極利於建立社會名聲與地位。女性感情發展佳。' },
+  '偏印': { focus: '偏門/孤僻', desc: '直覺敏銳，利於研究玄學或冷門專業。內心易感孤獨。極需防文書合約失誤或計畫延宕。' },
+  '正印': { focus: '貴人/庇蔭', desc: '易遇長輩、貴人相助，逢凶化吉。適合進修學習，身心狀態較為安穩平和，事半功倍。' }
+};
+
+const getYearGanZhi = (year) => {
+  const offset = year - 1984; 
+  const stemIdx = ((offset % 10) + 10) % 10;
+  const branchIdx = ((offset % 12) + 12) % 12;
+  return { stem: STEMS[stemIdx], branch: BRANCHES[branchIdx] };
+};
+
+const getMonthGanZhi = (yearStem, monthIndex) => {
+  let startStemIdx = 0;
+  if (['甲', '己'].includes(yearStem)) startStemIdx = 2; // 丙寅
+  else if (['乙', '庚'].includes(yearStem)) startStemIdx = 4; // 戊寅
+  else if (['丙', '辛'].includes(yearStem)) startStemIdx = 6; // 庚寅
+  else if (['丁', '壬'].includes(yearStem)) startStemIdx = 8; // 壬寅
+  else if (['戊', '癸'].includes(yearStem)) startStemIdx = 0; // 甲寅
+  const stemIdx = (startStemIdx + monthIndex - 1) % 10;
+  const branchIdx = (2 + monthIndex - 1) % 12; // 寅 is index 2
+  return { stem: STEMS[stemIdx], branch: BRANCHES[branchIdx] };
+};
+
+const getDynamicMonthsForYear = (year) => {
+  const yGZ = getYearGanZhi(year);
+  const prevYGZ = getYearGanZhi(year - 1);
+  const months = [];
+  const m1GZ = getMonthGanZhi(prevYGZ.stem, 12);
+  months.push({ month: 1, stem: m1GZ.stem, branch: m1GZ.branch, name: `1月 (${m1GZ.branch}月)` });
+  for (let i = 1; i <= 11; i++) {
+    const mGZ = getMonthGanZhi(yGZ.stem, i);
+    months.push({ month: i + 1, stem: mGZ.stem, branch: mGZ.branch, name: `${i + 1}月 (${mGZ.branch}月)` });
+  }
+  return months;
+};
+
+const getDayGanZhi = (year, month, day) => {
+  const target = new Date(year, month - 1, day);
+  const anchor = new Date(2026, 0, 1);
+  const diffDays = Math.round((target - anchor) / (1000 * 60 * 60 * 24));
+  const stemIdx = ((1 + diffDays) % 10 + 10) % 10;
+  const branchIdx = ((11 + diffDays) % 12 + 12) % 12;
+  return { stem: STEMS[stemIdx], branch: BRANCHES[branchIdx] };
+};
+
+const generateMonthDaysDynamic = (year, month) => {
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const days = [];
+  for (let i = 1; i <= daysInMonth; i++) {
+    const dateObj = new Date(year, month - 1, i);
+    const weekDay = dateObj.getDay();
+    const gz = getDayGanZhi(year, month, i);
+    days.push({
+      date: `${year}/${String(month).padStart(2, '0')}/${String(i).padStart(2, '0')}`,
+      dayNum: i,
+      stem: gz.stem, branch: gz.branch, weekDay: weekDay
+    });
+  }
+  return days;
+};
+
+export default function BaziAnalysisSystem() {
+  const [activeTab, setActiveTab] = useState('natal'); 
+  
+  const [bazi, setBazi] = useState({
+    gender: 'M',
+    yearStem: '癸', yearBranch: '亥',
+    monthStem: '乙', monthBranch: '卯',
+    dayStem: '庚', dayBranch: '申',
+    hourStem: '丁', hourBranch: '亥'
+  });
+
+  const [daYunIndex, setDaYunIndex] = useState(2); 
+
+  const [pastEvents, setPastEvents] = useState([
+    { year: 2020, stem: '庚', branch: '子', event: '轉換工作，面臨巨大壓力。', isSystem: false, detail: '流年天干透比肩，地支子水。' }
+  ]);
+  const [newEvent, setNewEvent] = useState({ year: 2024, stem: '甲', branch: '辰', event: '' });
+  const [scanMessage, setScanMessage] = useState(null);
+
+  const [targetYear, setTargetYear] = useState(2026);
+  const [selectedMonth, setSelectedMonth] = useState(6);
+  const [selectedDayStr, setSelectedDayStr] = useState('2026/06/16'); 
+
+  const daYunSequence = useMemo(() => {
+    const yStemYY = STEM_ATTR[bazi.yearStem].yy;
+    const isMale = bazi.gender === 'M';
+    const isForward = (isMale && yStemYY === '+') || (!isMale && yStemYY === '-');
+    let sIdx = STEMS.indexOf(bazi.monthStem);
+    let bIdx = BRANCHES.indexOf(bazi.monthBranch);
+    const step = isForward ? 1 : -1;
+    const seq = [];
+    for(let i = 0; i < 8; i++) {
+      sIdx = (sIdx + step + 10) % 10;
+      bIdx = (bIdx + step + 12) % 12;
+      seq.push({ stem: STEMS[sIdx], branch: BRANCHES[bIdx], name: `第${i+1}步` });
+    }
+    return { seq, isForward };
+  }, [bazi.gender, bazi.yearStem, bazi.monthStem, bazi.monthBranch]);
+
+  const currentDaYun = daYunSequence.seq[daYunIndex] || daYunSequence.seq[0];
+  const daYunStem = currentDaYun.stem;
+  const daYunBranch = currentDaYun.branch;
+
+  const analysisEngine = useMemo(() => {
+    const dm = bazi.dayStem;
+    const dmEl = STEM_ATTR[dm].el;
+    const mb = bazi.monthBranch;
+    const mbEl = BRANCH_ATTR[mb].el;
+    
+    let powerDetails = []; let powerScore = 0; 
+    
+    if (mbEl === dmEl) { powerScore += 40; powerDetails.push(`得令 (月令${mbEl}與日主同旺，+40分)`); }
+    else if (WU_XING_RELATION[dmEl].beiSheng === mbEl) { powerScore += 35; powerDetails.push(`得令 (月令${mbEl}生助日主，+35分)`); }
+    else { powerScore -= 20; powerDetails.push(`不得令 (月令${mbEl}耗洩剋日主，-20分)`); }
+
+    const dbEl = BRANCH_ATTR[bazi.dayBranch].el;
+    if (dbEl === dmEl || WU_XING_RELATION[dmEl].beiSheng === dbEl) {
+       powerScore += 25; powerDetails.push(`得地 (坐下${bazi.dayBranch}有根氣生扶，+25分)`);
+    } else {
+       powerScore -= 10; powerDetails.push(`不得地 (坐下${bazi.dayBranch}無助，-10分)`);
+    }
+
+    const others = [bazi.yearStem, bazi.yearBranch, bazi.monthStem, bazi.hourStem, bazi.hourBranch];
+    let helperCount = 0;
+    others.forEach(x => {
+      const el = STEM_ATTR[x]?.el || BRANCH_ATTR[x]?.el;
+      if (el === dmEl || WU_XING_RELATION[dmEl].beiSheng === el) helperCount++;
+    });
+    powerScore += (helperCount * 8); 
+    powerDetails.push(`得勢 (其餘干支得助黨數：${helperCount}，+${helperCount * 8}分)`);
+
+    const isStrong = powerScore > 30; 
+    let usefulGods = []; let badGods = [];
+    if (isStrong) {
+      usefulGods = [WU_XING_RELATION[dmEl].ke, WU_XING_RELATION[dmEl].sheng, WU_XING_RELATION[dmEl].beiKe]; 
+      badGods = [dmEl, WU_XING_RELATION[dmEl].beiSheng]; 
+    } else {
+      usefulGods = [dmEl, WU_XING_RELATION[dmEl].beiSheng]; 
+      badGods = [WU_XING_RELATION[dmEl].ke, WU_XING_RELATION[dmEl].sheng, WU_XING_RELATION[dmEl].beiKe]; 
+    }
+
+    const branches = [bazi.yearBranch, bazi.monthBranch, bazi.dayBranch, bazi.hourBranch];
+    const stems = [bazi.yearStem, bazi.monthStem, bazi.dayStem, bazi.hourStem];
+    const kongWang = getKongWang(bazi.dayStem, bazi.dayBranch);
+    
+    let advancedRelations = [];
+    
+    // 伏吟返吟檢查
+    const pillars = [
+      {n: '年柱', s:bazi.yearStem, b:bazi.yearBranch}, {n: '月柱', s:bazi.monthStem, b:bazi.monthBranch},
+      {n: '日柱', s:bazi.dayStem, b:bazi.dayBranch}, {n: '時柱', s:bazi.hourStem, b:bazi.hourBranch}
+    ];
+    for(let i=0; i<pillars.length; i++){
+      for(let j=i+1; j<pillars.length; j++){
+        if(pillars[i].s===pillars[j].s && pillars[i].b===pillars[j].b) advancedRelations.push(`【伏吟】 ${pillars[i].n}與${pillars[j].n}干支相同(${pillars[i].s}${pillars[i].b})，氣場重疊呆滯。`);
+        if(TG_RELATIONS.chong.some(p => p.includes(pillars[i].s) && p.includes(pillars[j].s)) && RELATIONS.chong.some(p => p.includes(pillars[i].b) && p.includes(pillars[j].b))) {
+          advancedRelations.push(`【反吟】 ${pillars[i].n}與${pillars[j].n}天剋地沖，一生該兩宮位極度動盪。`);
+        }
+      }
+    }
+
+    // 刑沖合害
+    RELATIONS.chong.forEach(pair => {
+      if (branches.includes(pair[0]) && branches.includes(pair[1])) advancedRelations.push(`【明沖】 地支${pair[0]}${pair[1]}相沖。`);
+      if (pair.includes(daYunBranch)) {
+        const target = pair[0] === daYunBranch ? pair[1] : pair[0];
+        if (branches.includes(target)) advancedRelations.push(`🚨 【大運震盪】 大運(${daYunBranch}) 沖 原局(${target})。`);
+      }
+    });
+
+    // 夾拱暗合
+    RELATIONS.angong.forEach(group => {
+      if(branches.includes(group[0]) && branches.includes(group[1]) && !branches.includes(group[2])) {
+        advancedRelations.push(`【暗拱】 原局見${group[0]}${group[1]}，暗中拱出虛擬之「${group[2]}」氣，待歲運填實即發揮強大力量。`);
+      }
+    });
+    RELATIONS.anhe.forEach(pair => {
+      if (branches.includes(pair[0]) && branches.includes(pair[1])) advancedRelations.push(`【暗合】 地支${pair[0]}${pair[1]}暗合，人際或感情有暗中牽絆之象。`);
+    });
+
+    return { 
+      dm, dmEl, isStrong, powerScore, powerDetails, usefulGods, badGods, advancedRelations, kongWang,
+      daYunStemGod: getExactTenGod(dm, daYunStem),
+      daYunBranchGod: getExactTenGod(dm, daYunBranch),
+      daYunLifeStage: ZHANG_SHENG[dm][BRANCHES.indexOf(daYunBranch)]
+    };
+  }, [bazi, daYunStem, daYunBranch]);
+
+  const handleBaziChange = (field, value) => { setBazi(prev => ({ ...prev, [field]: value })); };
+  
+  const addEvent = () => {
+    if (newEvent.event) {
+      setPastEvents([{ ...newEvent, isSystem: false, detail: '使用者手動輸入之校正事件。系統將據此對比大數據資料庫。' }, ...pastEvents].sort((a,b)=>b.year-a.year));
+      setNewEvent({ year: newEvent.year + 1, stem: '乙', branch: '巳', event: '' });
+      setScanMessage("✅ 手動事件已成功加入校正庫！");
+      setTimeout(() => setScanMessage(null), 3000);
+    }
+  };
+
+  const autoInferEvents = () => {
+    const inferred = [];
+    const currentYear = new Date().getFullYear();
+    
+    for (let y = currentYear - 12; y <= currentYear; y++) {
+      const offset = y - 1984;
+      const yStem = STEMS[((offset % 10) + 10) % 10];
+      const yBranch = BRANCHES[((offset % 12) + 12) % 12];
+      const lnStemGod = getExactTenGod(bazi.dayStem, yStem);
+
+      let reason = ''; let detail = '';
+      if (RELATIONS.chong.some(p => p.includes(yBranch) && p.includes(bazi.dayBranch))) {
+          reason = `流年(${yBranch})沖動您的夫妻宮/自身(${bazi.dayBranch})。`;
+          detail = `日支受沖為「破」。此年感情、婚姻或內在安定感遭遇劇烈變動。天干透【${lnStemGod}】，主導該年外在呈現之特質。伏吟返吟與刑沖效應疊加。`;
+      } else if (RELATIONS.chong.some(p => p.includes(yBranch) && p.includes(bazi.monthBranch))) {
+          reason = `流年(${yBranch})沖動您的事業宮(${bazi.monthBranch})。`;
+          detail = `月支為事業與長輩宮。極易面臨職場環境重組、調職或與長官理念不合。也是考驗抗壓性的一年。`;
+      } else if (yStem === bazi.dayStem && yBranch === bazi.dayBranch) {
+          reason = `歲運伏吟：流年(${yStem}${yBranch})與日柱完全相同。`;
+          detail = `「反吟伏吟，泣涕淋淋」。此年氣場極度重疊停滯，容易感到無力、悲觀或發生牽絆之事，宜靜守。`;
+      }
+
+      if (reason && !pastEvents.some(e => e.year === y)) {
+          inferred.push({ year: y, stem: yStem, branch: yBranch, event: `【AI 自動推論】 ${reason}`, isSystem: true, detail });
+      }
+    }
+    
+    if (inferred.length > 0) {
+      setPastEvents(prev => [...inferred, ...prev].sort((a,b)=>b.year-a.year));
+      setScanMessage(`🔮 系統成功掃描！已為您自動找出 ${inferred.length} 個命局被強烈引動的關鍵年份。`);
+    } else {
+      setScanMessage('ℹ️ 近十二年內無直接沖擊您核心宮位或伏吟返吟的極端年份。');
+    }
+    setTimeout(() => setScanMessage(null), 5000);
+  };
+
+  const RenderNatalChart = () => (
+    <div className="space-y-6 animate-fadeIn">
+      <div className="bg-slate-800 p-6 rounded-xl border border-amber-900/50 shadow-lg relative overflow-hidden">
+        <h2 className="text-xl font-bold text-amber-500 mb-4 flex items-center relative z-10"><Compass className="mr-2" /> 四柱原局排盤與四維解析</h2>
+        
+        <div className="flex bg-slate-900/80 p-1 rounded-lg border border-slate-700 w-fit mb-5 relative z-10">
+            <button onClick={() => handleBaziChange('gender', 'M')} className={`px-5 py-1.5 rounded-md text-sm font-bold transition-all ${bazi.gender === 'M' ? 'bg-amber-600 text-white shadow' : 'text-slate-400'}`}>乾造 (男命)</button>
+            <button onClick={() => handleBaziChange('gender', 'F')} className={`px-5 py-1.5 rounded-md text-sm font-bold transition-all ${bazi.gender === 'F' ? 'bg-amber-600 text-white shadow' : 'text-slate-400'}`}>坤造 (女命)</button>
+        </div>
+
+        <div className="flex flex-col lg:flex-row gap-6 relative z-10">
+          <div className="grid grid-cols-4 gap-2 text-center flex-1">
+            {[
+              { label: '時柱 (晚年/子女)', stemKey: 'hourStem', branchKey: 'hourBranch' },
+              { label: '日柱 (自身/配偶)', stemKey: 'dayStem', branchKey: 'dayBranch', isDayMaster: true },
+              { label: '月柱 (事業/父母)', stemKey: 'monthStem', branchKey: 'monthBranch' },
+              { label: '年柱 (早年/祖上)', stemKey: 'yearStem', branchKey: 'yearBranch' }
+            ].map((col, idx) => {
+              const bStem = bazi[col.stemKey];
+              const bBranch = bazi[col.branchKey];
+              const isKong = analysisEngine.kongWang.includes(bBranch);
+              return (
+              <div key={idx} className={`bg-slate-900/80 p-3 rounded-lg border flex flex-col shadow-inner ${isKong ? 'border-purple-900/50 relative' : 'border-slate-700'}`}>
+                {isKong && <span className="absolute -top-2 -right-2 bg-purple-900 text-purple-200 text-[10px] px-1.5 py-0.5 rounded shadow border border-purple-700 z-10">空亡</span>}
+                <div className="text-xs text-slate-400 mb-2 truncate">{col.label}</div>
+                {!col.isDayMaster ? <div className="text-xs text-blue-400 mb-1 font-medium">{getExactTenGod(bazi.dayStem, bStem)}</div> : <div className="text-xs text-amber-500 font-bold mb-1">日干</div>}
+                
+                <select value={bStem} onChange={e => handleBaziChange(col.stemKey, e.target.value)} 
+                  className={`bg-transparent text-xl md:text-2xl font-bold text-center w-full outline-none cursor-pointer py-1 ${col.isDayMaster ? 'text-amber-400' : 'text-white'}`}>
+                  {STEMS.map(s => <option key={s} value={s} className="bg-slate-900">{s}</option>)}
+                </select>
+                
+                <select value={bBranch} onChange={e => handleBaziChange(col.branchKey, e.target.value)} 
+                  className={`bg-transparent text-xl md:text-2xl font-bold text-center w-full mt-1 outline-none cursor-pointer py-1 ${col.isDayMaster ? 'text-amber-400' : 'text-white'}`}>
+                  {BRANCHES.map(b => <option key={b} value={b} className="bg-slate-900">{b}</option>)}
+                </select>
+                
+                <div className="text-xs text-purple-400 mt-2 font-medium">{getExactTenGod(bazi.dayStem, bBranch)}</div>
+                <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-800">
+                   <span className="text-[11px] text-slate-500">{ZHANG_SHENG[bazi.dayStem][BRANCHES.indexOf(bBranch)]}</span>
+                   <span className="text-[11px] text-amber-600/80 font-medium">{NAYIN_TABLE[bStem+bBranch]}</span>
+                </div>
+              </div>
+            )})}
+          </div>
+          
+          {/* 大運設定 */}
+          <div className="lg:w-48 bg-gradient-to-b from-amber-900/30 to-slate-900 p-4 rounded-lg border border-amber-700/50 flex flex-col items-center justify-center shadow-inner relative">
+             <div className="text-sm font-bold text-amber-300 mb-2">當前大運 (十年基調)</div>
+             <div className="text-xs text-blue-300 mb-1">{analysisEngine.daYunStemGod}</div>
+             <select value={daYunIndex} onChange={e => setDaYunIndex(parseInt(e.target.value))} className="bg-transparent text-xl font-bold text-center w-full outline-none text-amber-400 border-b border-amber-500/30 pb-1">
+                {daYunSequence.seq.map((dy, i) => (<option key={i} value={i} className="bg-slate-900">{`${dy.name}: ${dy.stem}${dy.branch}`}</option>))}
+             </select>
+             <div className="text-xs text-purple-300 mt-1">{analysisEngine.daYunBranchGod}</div>
+             <div className="text-[11px] text-slate-400 mt-2 bg-slate-800 px-2 py-1 rounded w-full text-center">
+                行【{analysisEngine.daYunLifeStage}】運
+                {analysisEngine.kongWang.includes(daYunBranch) && <span className="text-purple-400 ml-1">/ 落空亡</span>}
+             </div>
+             <div className="mt-2 text-[10px] text-slate-500">{bazi.gender === 'M' ? '乾造' : '坤造'} {daYunSequence.isForward ? '順排' : '逆排'}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
+          <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-600 pb-2 flex items-center">
+            <Activity className="w-5 h-5 text-blue-400 mr-2" /> 體用平衡與身強弱
+          </h3>
+          <div className="space-y-4 text-sm text-slate-300">
+            <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700">
+              <strong className="text-white block mb-2 text-base">日主【{bazi.dayStem}{analysisEngine.dmEl}】氣數演算：</strong>
+              <div className="text-xs text-slate-400 mb-2">意象：{STEM_ATTR[bazi.dayStem].desc}</div>
+              <ul className="space-y-2 mb-4 text-slate-400">
+                {analysisEngine.powerDetails.map((detail, i) => (
+                  <li key={i} className="flex items-start"><ChevronRight className="w-4 h-4 mr-1 shrink-0 mt-0.5"/>{detail}</li>
+                ))}
+              </ul>
+              <div className="flex justify-between items-center border-t border-slate-700 pt-3">
+                <span className="text-base">評分：<span className="font-bold text-amber-400 text-lg">{analysisEngine.powerScore}</span></span>
+                <span className="px-4 py-1.5 bg-amber-900/40 text-amber-200 rounded-full font-bold shadow">
+                  大師判定：{analysisEngine.isStrong ? '身強 (宜剋洩耗)' : '身弱 (宜生扶印比)'}
+                </span>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-4 bg-green-900/10 border border-green-900/30 rounded-lg">
+                <div className="text-green-400 font-bold mb-1 flex items-center"><CheckCircle2 className="w-4 h-4 mr-1"/> 喜用神 (宜補)</div>
+                <div className="text-white text-lg font-medium">{analysisEngine.usefulGods.join('、')}</div>
+              </div>
+              <div className="p-4 bg-red-900/10 border border-red-900/30 rounded-lg">
+                <div className="text-red-400 font-bold mb-1 flex items-center"><ShieldAlert className="w-4 h-4 mr-1"/> 仇忌神 (宜避)</div>
+                <div className="text-white text-lg font-medium">{analysisEngine.badGods.join('、')}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 flex flex-col">
+          <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-600 pb-2 flex items-center">
+            <Star className="w-5 h-5 text-purple-400 mr-2" /> 盲派高階秘法 (暗盤與神煞)
+          </h3>
+          <div className="flex-1 space-y-3 overflow-y-auto pr-2 custom-scrollbar">
+             {analysisEngine.advancedRelations.length > 0 ? (
+               analysisEngine.advancedRelations.map((rel, i) => (
+                 <div key={i} className="bg-slate-900/50 p-3 rounded border border-slate-700 text-sm text-slate-300 flex items-start">
+                    <Zap className="w-4 h-4 text-amber-400 mr-2 shrink-0 mt-0.5" />
+                    <span>{rel}</span>
+                 </div>
+               ))
+             ) : (
+               <div className="bg-slate-900/50 p-3 rounded border border-slate-700 text-sm text-slate-400">
+                 原局無明顯刑沖合害或伏吟暗拱，氣場純粹。
+               </div>
+             )}
+             
+             <div className="bg-indigo-950/30 p-3 rounded border border-indigo-900/50 text-sm mt-3">
+               <strong className="text-indigo-300 block mb-1">【日主空亡局】</strong>
+               <p className="text-slate-300">
+                 依日柱【{bazi.dayStem}{bazi.dayBranch}】推算，您的空亡地支為 <strong className="text-purple-400">{analysisEngine.kongWang.join('、')}</strong>。
+                 若大運或流年逢此二支，則力量虛浮，吉凶皆減半，有「竹籃打水一場空」或「逢凶化吉」之雙面效應。
+               </p>
+             </div>
+             
+             <div className="bg-slate-900/50 p-3 rounded border border-slate-700 text-sm mt-3">
+               <strong className="text-slate-200 block mb-1">【納音論命】</strong>
+               <p className="text-slate-400">
+                 日柱納音為【<strong className="text-amber-400">{NAYIN_TABLE[bazi.dayStem+bazi.dayBranch]}</strong>】，此乃您靈魂深處的本質音階。大運流年納音若與之相生則順，相剋則逆。
+               </p>
+             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const RenderCalibration = () => (
+    <div className="space-y-6 animate-fadeIn">
+      <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
+        <h2 className="text-xl font-bold text-amber-500 mb-4 flex items-center"><History className="mr-2" /> 雙向事件回歸校正系統</h2>
+        <p className="text-slate-400 mb-6 text-sm">輸入過往事件，結合納音、長生十二神、伏吟返吟與刑沖引動，反向推演底層命理邏輯。</p>
+        
+        {scanMessage && (
+          <div className="mb-6 bg-slate-900 border border-amber-500/50 text-amber-300 p-4 rounded-lg flex items-center shadow-lg animate-fadeIn">
+            <Info className="w-5 h-5 mr-3 shrink-0" /> <span>{scanMessage}</span>
+          </div>
+        )}
+
+        <div className="flex flex-col md:flex-row gap-4 mb-8 bg-slate-900/50 p-5 rounded-lg border border-slate-700 shadow-inner">
+          <div className="flex-1 flex flex-wrap gap-3">
+            <input type="number" placeholder="年份" value={newEvent.year} onChange={e => setNewEvent({...newEvent, year: parseInt(e.target.value)})} className="bg-slate-800 text-white px-3 py-2 rounded border outline-none w-28" />
+            <select value={newEvent.stem} onChange={e => setNewEvent({...newEvent, stem: e.target.value})} className="bg-slate-800 text-white px-3 py-2 rounded border outline-none">
+              {STEMS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select value={newEvent.branch} onChange={e => setNewEvent({...newEvent, branch: e.target.value})} className="bg-slate-800 text-white px-3 py-2 rounded border outline-none">
+              {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+            <input type="text" placeholder="發生什麼事？" value={newEvent.event} onChange={e => setNewEvent({...newEvent, event: e.target.value})} className="bg-slate-800 text-white px-4 py-2 rounded border flex-1 min-w-[200px] outline-none" />
+            <button onClick={addEvent} className="bg-slate-700 hover:bg-slate-600 text-white px-6 py-2 rounded font-medium border">手動新增</button>
+          </div>
+          <button onClick={autoInferEvents} className="bg-amber-600/20 text-amber-400 border border-amber-600/50 px-6 py-2 rounded font-bold flex items-center">
+            <Zap className="w-5 h-5 mr-2" /> AI 自動推演
+          </button>
+        </div>
+
+        <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 md:before:mx-auto before:w-0.5 before:bg-slate-700">
+          {pastEvents.map((evt, idx) => {
+            const evtStemGod = getExactTenGod(bazi.dayStem, evt.stem);
+            const ls = ZHANG_SHENG[bazi.dayStem][BRANCHES.indexOf(evt.branch)];
+            const isKong = analysisEngine.kongWang.includes(evt.branch);
+
+            return (
+              <div key={`${evt.year}-${idx}`} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group animate-fadeIn">
+                <div className={`flex items-center justify-center w-12 h-12 rounded-full border-4 border-slate-800 ${evt.isSystem ? 'bg-purple-600 text-white' : 'bg-amber-500 text-slate-900'} font-bold shrink-0 shadow-lg z-10 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2`}>
+                  {evt.stem}
+                </div>
+                <div className={`w-[calc(100%-4rem)] md:w-[calc(50%-3rem)] p-5 rounded-xl border shadow-md ${evt.isSystem ? 'border-purple-900/50 bg-slate-900/90' : 'border-slate-700 bg-slate-900/80'}`}>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className={`font-bold text-xl ${evt.isSystem ? 'text-purple-400' : 'text-amber-400'}`}>{evt.year} {evt.stem}{evt.branch}年</span>
+                    <div className="flex gap-1">
+                       {isKong && <span className="text-xs bg-purple-900/50 text-purple-200 px-2 py-0.5 rounded border border-purple-800">空亡年</span>}
+                       <span className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-600">{ls}地</span>
+                    </div>
+                  </div>
+                  <p className="text-white mb-4 text-[15px] font-bold">{evt.event}</p>
+                  
+                  <div className="bg-slate-800 p-4 rounded-lg text-sm text-slate-300 border border-slate-700/50">
+                    <strong className="text-amber-400 flex items-center mb-2"><Search className="w-4 h-4 mr-2" /> 深度推演反饋：</strong>
+                    <p className="leading-relaxed mb-2">
+                      流年天干透出【{evtStemGod}】。納音為【{NAYIN_TABLE[evt.stem+evt.branch]}】。
+                      日主在該年走入十二長生之「{ls}」運。
+                      {isKong && ' 由於落入空亡，該年事件往往虛幻不實或中途生變。'}
+                    </p>
+                    <div className="text-slate-400 bg-slate-900/50 p-2 rounded">{evt.detail}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+
+  const RenderDaYunLiuNian = () => {
+    const futureYears = [0,1,2,3,4].map(i => {
+      const y = targetYear + i; const gz = getYearGanZhi(y); return { year: y, ...gz };
+    });
+
+    return (
+      <div className="space-y-6 animate-fadeIn">
+        <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold text-amber-500 flex items-center"><ShieldAlert className="mr-2" /> 歲運交鋒：大運 × 流年</h2>
+            <input type="number" value={targetYear} onChange={e => setTargetYear(parseInt(e.target.value)||2026)} className="bg-slate-900 text-amber-400 px-3 py-1 rounded border outline-none w-24" />
+          </div>
+          
+          <div className="grid gap-5">
+            {futureYears.map((fy) => {
+              const lnStemGod = getExactTenGod(bazi.dayStem, fy.stem);
+              const yunStemEl = STEM_ATTR[daYunStem].el;
+              const nianStemEl = STEM_ATTR[fy.stem].el;
+              let interaction = ''; let isWarn = false;
+              
+              if (yunStemEl === nianStemEl && daYunStem === fy.stem && daYunBranch === fy.branch) { interaction = '歲運並臨 (極大波折/轉折)'; isWarn = true; }
+              else if (TG_RELATIONS.chong.some(p=>p.includes(daYunStem)&&p.includes(fy.stem)) && RELATIONS.chong.some(p=>p.includes(daYunBranch)&&p.includes(fy.branch))) { interaction = '歲運反吟 (天剋地沖，大凶)'; isWarn = true; }
+              else if (daYunStem === fy.stem && daYunBranch === fy.branch) { interaction = '歲運伏吟 (停滯痛苦)'; isWarn = true; }
+              else if (WU_XING_RELATION[yunStemEl].sheng === nianStemEl) { interaction = '運生年 (順遂發展)'; }
+              else if (WU_XING_RELATION[nianStemEl].ke === yunStemEl) { interaction = '年剋運 (歲君犯運，突發阻礙)'; isWarn = true; }
+              else interaction = '歲運平穩交涉';
+
+              const ls = ZHANG_SHENG[bazi.dayStem][BRANCHES.indexOf(fy.branch)];
+              const ny = NAYIN_TABLE[fy.stem+fy.branch];
+
+              return (
+                <div key={fy.year} className={`bg-slate-900/50 p-5 rounded-lg border flex flex-col lg:flex-row gap-5 ${isWarn ? 'border-red-900/50' : 'border-slate-700'}`}>
+                  <div className="bg-slate-800 w-28 h-28 rounded-lg flex flex-col items-center justify-center shrink-0 border border-slate-600 shadow-lg">
+                    <span className="text-sm text-slate-400">{fy.year}年</span>
+                    <span className="text-3xl font-bold text-amber-400">{fy.stem}{fy.branch}</span>
+                    <span className="text-[10px] text-slate-500 mt-1">{ny}</span>
+                  </div>
+                  <div className="flex-1 space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      <span className="bg-blue-900/50 text-blue-300 px-2 py-1 rounded text-sm border font-medium">主事：{lnStemGod}</span>
+                      <span className={`px-2 py-1 rounded text-sm border font-medium ${isWarn ? 'bg-red-900/50 text-red-300 border-red-800' : 'bg-slate-800 text-slate-300 border-slate-600'}`}>交鋒：{interaction}</span>
+                      <span className="bg-purple-900/30 text-purple-300 px-2 py-1 rounded text-sm border border-purple-900/50">氣脈：{ls}</span>
+                    </div>
+                    <p className="text-slate-300 text-[14px] leading-relaxed">
+                      大運【{daYunStem}{daYunBranch}】背景下，流年帶入【{lnStemGod}】事件（{EVENT_DICTIONARY[lnStemGod]?.desc}）。
+                      日主逢【{ls}】地，代表今年氣脈能量為此狀態。{isWarn && <strong className="text-red-400 block mt-1">※ 警告：{interaction}，必須極度保守應對。</strong>}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const RenderMonthlyModel = () => {
+    const yearGZ = getYearGanZhi(targetYear);
+    const dynamicMonths = useMemo(() => getDynamicMonthsForYear(targetYear), [targetYear]);
+
+    return (
+      <div className="space-y-6 animate-fadeIn">
+        <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-amber-500 flex items-center"><Calendar className="mr-2" /> 三維連動：運 × 年 × 月</h2>
+            <input type="number" value={targetYear} onChange={e => setTargetYear(parseInt(e.target.value)||2026)} className="bg-slate-900 text-amber-400 px-3 py-1 rounded outline-none border w-24" />
+          </div>
+          
+          <div className="flex flex-wrap gap-2 mb-6 p-4 bg-slate-900 rounded-lg border text-sm text-slate-300 items-center">
+             <strong className="text-white bg-slate-800 px-3 py-1.5 rounded">運 [{daYunStem}{daYunBranch}]</strong> <ArrowRight className="w-4 h-4 text-slate-500"/>
+             <strong className="text-amber-400 bg-amber-900/20 px-3 py-1.5 rounded">年 [{yearGZ.stem}{yearGZ.branch}]</strong> <ArrowRight className="w-4 h-4 text-slate-500"/>
+             <strong className="text-blue-400 bg-blue-900/20 px-3 py-1.5 rounded">月 (十二流月落實)</strong>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {dynamicMonths.map((m) => {
+              const monthGod = getExactTenGod(bazi.dayStem, m.stem);
+              const ls = ZHANG_SHENG[bazi.dayStem][BRANCHES.indexOf(m.branch)];
+              let isChongYear = RELATIONS.chong.some(p => p.includes(m.branch) && p.includes(yearGZ.branch));
+
+              return (
+                <div key={m.month} className={`bg-slate-900/60 p-5 rounded-lg border flex flex-col transition-colors ${isChongYear ? 'border-red-900/50' : 'border-slate-700'}`}>
+                  <div className="flex justify-between items-start mb-3 border-b border-slate-800 pb-3">
+                    <div className="flex items-center">
+                      <div className="text-xl font-bold mr-3 w-12 h-12 flex items-center justify-center rounded bg-slate-800 text-white border">{m.stem}{m.branch}</div>
+                      <div>
+                        <h4 className="font-bold text-amber-400 text-sm">{m.name}</h4>
+                        <span className="text-xs text-slate-500">納音：{NAYIN_TABLE[m.stem+m.branch]} | 氣脈：{ls}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-sm text-slate-300 space-y-2">
+                     <p>透出【<strong className="text-blue-300">{monthGod}</strong>】。{EVENT_DICTIONARY[monthGod]?.focus}</p>
+                     {isChongYear && <div className="p-2 bg-red-950/50 text-red-300 text-xs rounded border border-red-900/50">歲破月：月建沖太歲，大環境極度動盪。</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const RenderDailyModel = () => {
+    const yearGZ = getYearGanZhi(targetYear);
+    const dynamicMonths = useMemo(() => getDynamicMonthsForYear(targetYear), [targetYear]);
+    const daysInMonth = useMemo(() => generateMonthDaysDynamic(targetYear, selectedMonth), [targetYear, selectedMonth]);
+    const emptyCells = Array(daysInMonth[0].weekDay).fill(null);
+    
+    let selectedDayObj = daysInMonth.find(d => d.date === selectedDayStr) || daysInMonth[0];
+    const currentMonthObj = dynamicMonths.find(m => m.month === selectedMonth);
+    
+    const dayGod = getExactTenGod(bazi.dayStem, selectedDayObj.stem);
+    const ls = ZHANG_SHENG[bazi.dayStem][BRANCHES.indexOf(selectedDayObj.branch)];
+    const ny = NAYIN_TABLE[selectedDayObj.stem+selectedDayObj.branch];
+    const isDayKong = analysisEngine.kongWang.includes(selectedDayObj.branch);
+    
+    let isYearChong = RELATIONS.chong.some(p => p.includes(selectedDayObj.branch) && p.includes(yearGZ.branch)); 
+    let isMonthChong = RELATIONS.chong.some(p => p.includes(selectedDayObj.branch) && p.includes(currentMonthObj?.branch));
+    let isDayChong = RELATIONS.chong.some(p => p.includes(selectedDayObj.branch) && p.includes(bazi.dayBranch));
+    
+    let adviceType = isYearChong || isMonthChong || isDayChong ? 'bad' : ['七殺', '傷官'].includes(dayGod) ? 'warning' : 'neutral';
+
+    return (
+      <div className="space-y-6 animate-fadeIn">
+        <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 border-b border-slate-700 pb-4">
+            <h2 className="text-xl font-bold text-amber-500 mb-1 flex items-center"><CalendarDays className="mr-2" /> 四維微觀推演 (萬年曆版)</h2>
+            <div className="flex gap-3 bg-slate-900 px-3 py-2 rounded-lg border mt-2 md:mt-0">
+               <input type="number" value={targetYear} onChange={e=>setTargetYear(parseInt(e.target.value)||2026)} className="bg-slate-800 text-amber-400 font-bold px-2 py-1 rounded w-20 outline-none" />
+               <select value={selectedMonth} onChange={e=>{setSelectedMonth(parseInt(e.target.value)); setSelectedDayStr(`${targetYear}/${String(e.target.value).padStart(2,'0')}/01`)}} className="bg-slate-800 text-amber-400 font-bold px-2 py-1 rounded outline-none">
+                 {dynamicMonths.map(m => <option key={m.month} value={m.month}>{m.name}</option>)}
+               </select>
+            </div>
+          </div>
+
+          <div className="flex flex-col lg:flex-row gap-8">
+            <div className="w-full lg:w-[45%] shrink-0">
+              <div className="bg-slate-900 p-5 rounded-xl border border-slate-700 shadow-inner">
+                <div className="text-center font-bold text-amber-400 mb-4">{targetYear}年 {selectedMonth}月 ({currentMonthObj?.stem}{currentMonthObj?.branch}月)</div>
+                <div className="grid grid-cols-7 gap-1 text-center text-sm font-medium text-slate-500 mb-2">
+                  <div className="text-red-400/70">日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div className="text-blue-400/70">六</div>
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {emptyCells.map((_, i) => <div key={`empty-${i}`} className="p-2"></div>)}
+                  {daysInMonth.map((day) => {
+                    const isSelected = day.date === selectedDayStr;
+                    const isWarn = RELATIONS.chong.some(p => p.includes(day.branch) && (p.includes(yearGZ.branch) || p.includes(currentMonthObj?.branch)));
+                    return (
+                      <button key={day.date} onClick={() => setSelectedDayStr(day.date)}
+                        className={`relative p-2 rounded-lg flex flex-col items-center justify-center transition-all border outline-none ${isSelected ? 'bg-amber-500 text-slate-900 border-amber-400 scale-110 z-10' : 'bg-slate-800 hover:bg-slate-700 border-slate-600'}`}>
+                        <span className={`text-sm font-bold ${isSelected ? 'text-slate-900' : 'text-slate-200'}`}>{day.dayNum}</span>
+                        <span className={`text-[10px] mt-0.5 ${isSelected ? 'text-slate-800' : 'text-slate-400'}`}>{day.stem}{day.branch}</span>
+                        {isWarn && !isSelected && <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500"></span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="w-full lg:w-[55%] flex flex-col">
+              <div className={`flex-1 p-6 rounded-xl border shadow-lg ${adviceType==='bad' ? 'bg-red-950/40 border-red-900/50' : 'bg-slate-900/80 border-slate-700'}`}>
+                <div className="flex justify-between items-start mb-5 border-b border-slate-700/50 pb-4">
+                  <div>
+                    <div className="text-slate-400 text-sm mb-1">{selectedDayObj.date}</div>
+                    <span className="text-3xl font-black text-amber-400 tracking-widest">{selectedDayObj.stem}{selectedDayObj.branch} 日</span>
+                  </div>
+                  <div className="text-right flex flex-col gap-1 items-end">
+                    <span className="bg-slate-800 px-3 py-1 rounded text-sm text-amber-300 border border-slate-600">主事：{dayGod}</span>
+                    <span className="bg-purple-900/50 px-3 py-1 rounded text-sm text-purple-200 border border-purple-800">氣脈：{ls} | 納音：{ny}</span>
+                    {isDayKong && <span className="bg-indigo-900/50 px-3 py-1 rounded text-sm text-indigo-300 border border-indigo-800">日逢空亡</span>}
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-r from-indigo-950/40 to-slate-900/80 p-5 rounded-lg border border-indigo-900/50">
+                  <strong className="text-indigo-300 flex items-center mb-3"><Sparkles className="w-5 h-5 mr-2" /> 🤖 四維疊加情境推演</strong>
+                  <div className="text-sm text-slate-300 leading-relaxed space-y-2">
+                     <p>四維矩陣：運[{daYunStem}{daYunBranch}] ➔ 年[{yearGZ.stem}{yearGZ.branch}] ➔ 月[{currentMonthObj?.stem}{currentMonthObj?.branch}] ➔ 日[{selectedDayObj.stem}{selectedDayObj.branch}]</p>
+                     <p>
+                       今日天干【{selectedDayObj.stem}】({STEM_ATTR[selectedDayObj.stem].desc})，透出【{dayGod}】特性。
+                       {isYearChong ? <span className="text-red-400 font-bold">歲破日！地支強烈沖擊流年太歲，大環境極不穩。</span> : 
+                        isMonthChong ? <span className="text-red-400 font-bold">月破日！沖犯當月氣場，諸事不宜。</span> : 
+                        isDayChong ? <span className="text-red-400 font-bold">沖日支！直沖自身或夫妻宮，情緒極易失控。</span> : 
+                        isDayKong ? '日落空亡，今日行事易感虛浮無力，計畫多變，不宜強求。' :
+                        '今日氣場無重大刑沖，可依十神特性與氣脈安排常規事務。'}
+                     </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-200 p-4 md:p-8 font-sans selection:bg-amber-500/30">
+      <div className="max-w-[1400px] mx-auto">
+        <header className="mb-8 text-center md:text-left">
+          <h1 className="text-3xl md:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-amber-600 mb-3">
+            大師級四維八字深度推演系統 (Pro+)
+          </h1>
+          <p className="text-slate-400 text-lg">十二長生 ｜ 納音五行 ｜ 伏吟暗合 ｜ 空亡排測 ｜ 萬年曆動態引動</p>
+        </header>
+
+        <div className="flex flex-wrap gap-2.5 mb-8 border-b border-slate-800 pb-5">
+          {[
+            { id: 'natal', icon: Compass, label: '一. 原局與神煞' },
+            { id: 'calibration', icon: History, label: '二. 事件校正' },
+            { id: 'future', icon: TrendingUp, label: '三. 歲運交鋒' },
+            { id: 'monthly', icon: Calendar, label: '四. 三維流月' },
+            { id: 'daily', icon: CalendarDays, label: '五. 四維流日' },
+          ].map((tab) => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center px-4 py-2.5 rounded-lg transition-all duration-300 font-medium ${
+                activeTab === tab.id ? 'bg-amber-500/15 text-amber-400 border border-amber-500/50 scale-105' : 'bg-slate-900 text-slate-400 hover:bg-slate-800 border border-transparent'
+              }`}>
+              <tab.icon className="w-4 h-4 mr-2" />{tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="transition-opacity duration-500 min-h-[60vh]">
+          {activeTab === 'natal' && <RenderNatalChart />}
+          {activeTab === 'calibration' && <RenderCalibration />}
+          {activeTab === 'future' && <RenderDaYunLiuNian />}
+          {activeTab === 'monthly' && <RenderMonthlyModel />}
+          {activeTab === 'daily' && <RenderDailyModel />}
+        </div>
+      </div>
+    </div>
+  );
+}
